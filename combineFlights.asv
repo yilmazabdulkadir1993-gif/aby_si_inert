@@ -1,0 +1,102 @@
+function [combined, flights] = combineFlights(flights, Tm, thrustCurves, model)
+
+combined.rpm_setpoints = [];
+combined.rpms          = [];
+combined.acceleration  = [];
+combined.omega         = [];
+combined.domega        = [];
+
+
+if nargin < 3
+    thrustCurves =  [];  %modifyin to calculate torq moment inisde of combine but not in estinertia script
+end
+
+for k = 1:numel(flights)
+
+    f = flights{k};
+
+    timestamps = f.timestamps;
+
+    %% actuator commands
+
+    rpmSetpoints = f.data.motor.values(:,1:4);
+
+    %% first-order motor model
+
+    rpms = filterEMA(timestamps,rpmSetpoints,Tm);
+
+    %% save back into flight
+
+    f.rpm_setpoints = rpmSetpoints;
+    f.rpms = rpms;
+
+    f.acceleration = f.data.acc.values;
+    f.omega = f.data.gyro.values;
+    f.domega = f.data.domega.values;
+
+    flights{k} = f;
+
+    %% concatenate
+
+    combined.rpm_setpoints = ...
+        [combined.rpm_setpoints;
+         rpmSetpoints];
+
+    combined.rpms = ...
+        [combined.rpms;
+         rpms];
+
+    combined.acceleration = ...
+        [combined.acceleration;
+         f.acceleration];
+
+    combined.omega = ...
+        [combined.omega;
+         f.omega];
+
+    combined.domega = ...
+        [combined.domega;
+         f.domega];
+
+end
+%% thrust and torque calc
+if ~isempty(thrustCurves)
+
+    N = size(flights{i}.data.motor.values,1);
+
+    thrusts = zeros(N,4);
+    preTorque = zeros(N,4,3);
+    preTorqueGeom = zeros(N,4,3);
+
+    for k = 1:N
+
+        for m = 1:4
+
+            rpm = flights{i}.data.motor.values(k,m);
+
+            T = 0;
+
+            for e = 0:2
+                T = T + thrustCurves(m,e+1) * rpm^e;
+            end
+
+            thrusts(k,m) = T;
+
+            preTorque(k,m,:) = ...
+                T .* model.rotorTorqueDirections(m,:);
+
+            preTorqueGeom(k,m,:) = ...
+                T .* cross( ...
+                    model.rotorPositions(m,:), ...
+                    model.rotorThrustDirections(m,:) ...
+                );
+
+        end
+
+    end
+
+    flights{i}.thrusts = thrusts;
+    flights{i}.preTorque = preTorque;
+    flights{i}.preTorqueGeom = preTorqueGeom;
+
+end

@@ -1,0 +1,66 @@
+function flight = loadULog(filename)
+
+ulog = ulogreader(filename);
+
+topics = readTopicMsgs(ulog);
+
+%% Read topics
+
+gyro = topics.TopicMessages{strcmp(topics.TopicNames,...
+    "vehicle_angular_velocity")};
+
+accel = topics.TopicMessages{strcmp(topics.TopicNames,...
+    "vehicle_acceleration")};
+
+att = topics.TopicMessages{strcmp(topics.TopicNames,...
+    "vehicle_attitude")};
+
+motors = topics.TopicMessages{strcmp(topics.TopicNames,...
+    "actuator_motors")};
+
+%% Synchronize
+
+gyro_sync = gyro(:,{'xyz','xyz_derivative'});
+
+accel_sync = retime(accel(:,{'xyz'}),...
+    gyro.Properties.RowTimes,...
+    'linear');
+%it syncronizes acc and motor acc. to gyro 
+motors_sync = retime(motors(:,{'control'}),...
+    gyro.Properties.RowTimes,...
+    'linear');
+
+%% Store
+
+flight.gyro = gyro_sync;
+
+flight.acc = accel_sync;
+
+flight.motor = motors_sync;
+
+flight.att = att;
+
+%% Store signals
+%assigns sync datas to objects of flight variables like
+%flight.data.gyro/motor/accel etc
+flight.name = "flight1";
+flight.convention = "PX4";
+
+%angular speed
+flight.data.gyro.timestamps = seconds(gyro_sync.Properties.RowTimes - ...
+                                      gyro_sync.Properties.RowTimes(1));
+flight.data.gyro.values = gyro_sync.xyz;
+%angular rate
+flight.data.domega.timestamps = seconds(gyro_sync.Properties.RowTimes - ...
+                                        gyro_sync.Properties.RowTimes(1));
+flight.data.domega.values = gyro_sync.xyz_derivative;
+%acc
+flight.data.acc.timestamps = seconds(accel_sync.Properties.RowTimes - ...
+                                     accel_sync.Properties.RowTimes(1));
+flight.data.acc.values = accel_sync.xyz;
+%motor
+flight.data.motor.timestamps = seconds(motors_sync.Properties.RowTimes - ...
+                                       motors_sync.Properties.RowTimes(1));
+flight.data.motor.values = motors_sync.control(:,1:4);
+
+end
